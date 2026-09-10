@@ -1,0 +1,30 @@
+<View>
+  <View style="display: flex; gap: 1em; align-items: flex-start">
+
+    <!-- Video column; min-width lets it shrink instead of pushing the labels off -->
+    <View style="flex: 1 1 auto; min-width: 0">
+      <!-- visible rows = timelineHeight / 24 (KEYPOINT_ROW_HEIGHT), so 240 shows 10 -->
+      <Video name="video" value="$video" height="540" timelineHeight="200" selectRegionOnlyOnAnnotatedFrames="true" groupTimelineRowsByLabel="true" showCurrentFrameLabel="true" />
+    </View>
+
+    <!-- Labels column, to the right of the video -->
+    <View style="flex: 0 0 20%; min-width: 150px">
+      <TimelineLabels name="timelineLabels" toName="video" recordingMode="true" showInline="false">
+        <Header value="Coronale" />
+        <Label value="C-Situs-0" background="#E8A33D" hotkey="1" />
+        <Label value="C-Situs-1" background="#D97706" hotkey="2" />
+        <Label value="Transizione" background="#6B7280" hotkey="3" />
+
+        <Header value="Sagittale" />
+        <Label value="S-IVC-0" background="#3B82F6" hotkey="q" />
+        <Label value="S-IVC-1" background="#1D4ED8" hotkey="w" />
+        <Label value="S-Dao-0" background="#A855F7" hotkey="e" />
+
+        <Header value="Obliquo" />
+        <Label value="O-RV-0" background="#EC4899" hotkey="z" />
+        <Label value="O-LV-0" background="#F59E0B" hotkey="x" />
+      </TimelineLabels>
+    </View>
+
+  </View>
+</View>

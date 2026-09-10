@@ -17,6 +17,13 @@ Use with the `<Video>` control tag.
 !!! info Tip
     You can increase the height of the timeline using the `timelineHeight` parameter on the `<Video>` tag.
 
+### Recording mode
+
+With `recordingMode="true"` clicking a label starts a "recording": while the video is playing every frame
+that goes by is added to a region labeled with that label. Clicking the same label again stops the recording,
+clicking another label closes the current region and starts a new one. Recording stays armed while the video
+is paused and only extends the region during playback, so scrubbing the timeline doesn't label anything.
+
 {% insertmd includes/tags/timelinelabels.md %}
 
 ### Example
@@ -25,6 +32,16 @@ Use with the `<Video>` control tag.
   <Header>Label timeline spans:</Header>
   <Video name="video" value="$video" />
   <TimelineLabels name="timelineLabels" toName="video">
+    <Label value="Nothing" background="#944BFF"/>
+    <Label value="Movement" background="#98C84E"/>
+  </TimelineLabels>
+</View>
+```
+**Example** *(Label frames by playing the video instead of dragging on the timeline)*  
+```html
+<View>
+  <Video name="video" value="$video" />
+  <TimelineLabels name="timelineLabels" toName="video" recordingMode="true">
     <Label value="Nothing" background="#944BFF"/>
     <Label value="Movement" background="#98C84E"/>
   </TimelineLabels>

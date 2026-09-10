@@ -281,6 +281,10 @@ const Model = types
     },
 
     onLabelInteract() {
+      // the parent control tag can take over the interaction
+      // (i.e. TimelineLabels in recording mode starts/stops recording instead of just selecting)
+      if (self.parent?.handleLabelInteract?.(self)) return;
+
       return self.toggleSelected();
     },
 

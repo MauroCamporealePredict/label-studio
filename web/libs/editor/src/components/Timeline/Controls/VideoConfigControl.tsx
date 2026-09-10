@@ -18,6 +18,9 @@ export interface VideoConfigControlProps {
   onSpeedChange: (speed: number) => void;
   loopTimelineRegion: boolean;
   onLoopTimelineRegionChange: (loopRegion: boolean) => void;
+  /** seeded by the `selectRegionOnlyOnAnnotatedFrames` attribute of the `Video` tag */
+  selectOnAnnotatedFramesOnly?: boolean;
+  onSelectOnAnnotatedFramesOnlyChange?: (value: boolean) => void;
   minSpeed?: number;
 }
 
@@ -28,6 +31,8 @@ export const VideoConfigControl: FC<VideoConfigControlProps> = ({
   onSpeedChange,
   loopTimelineRegion,
   onLoopTimelineRegionChange,
+  selectOnAnnotatedFramesOnly = false,
+  onSelectOnAnnotatedFramesOnlyChange,
   minSpeed = MIN_SPEED,
 }) => {
   // Refs for positioning
@@ -177,6 +182,16 @@ export const VideoConfigControl: FC<VideoConfigControlProps> = ({
               labelProps={{ size: "small" }}
             />
           </div>
+          {onSelectOnAnnotatedFramesOnlyChange && (
+            <div className={styles.toggle}>
+              <Toggle
+                checked={selectOnAnnotatedFramesOnly}
+                onChange={(e) => onSelectOnAnnotatedFramesOnlyChange(e.target.checked)}
+                label="Select Regions Only On Annotated Frames"
+                labelProps={{ size: "small" }}
+              />
+            </div>
+          )}
         </div>
       </div>
     );

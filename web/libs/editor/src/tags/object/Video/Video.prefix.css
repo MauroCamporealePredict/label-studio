@@ -26,6 +26,32 @@
     max-width: 100%;
   }
 
+  &__main {
+    position: relative;
+  }
+
+  /* labels covering the frame on screen, over the top left corner of the video */
+  &__current-labels {
+    top: 8px;
+    left: 8px;
+    z-index: 2;
+    gap: 4px;
+    display: flex;
+    flex-wrap: wrap;
+    position: absolute;
+    pointer-events: none;
+    max-width: calc(100% - 16px);
+  }
+
+  &__current-label {
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    padding: 4px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+
   &_fullscreen {
     height: 1vh;
     flex: 100 1 1vh;

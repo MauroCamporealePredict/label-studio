@@ -1,9 +1,10 @@
 ### Parameters
 
-| Param | Type | Description |
-| --- | --- | --- |
-| name | <code>string</code> | Name of the element |
-| toName | <code>string</code> | Name of the video element |
+| Param | Type | Default | Description |
+| --- | --- | --- | --- |
+| name | <code>string</code> |  | Name of the element |
+| toName | <code>string</code> |  | Name of the video element |
+| [recordingMode] | <code>boolean</code> | <code>false</code> | Label frames while the video is playing: click a label to start recording, click it again to stop |
 
 ### Result parameters
 

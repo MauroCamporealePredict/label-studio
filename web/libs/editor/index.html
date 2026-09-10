@@ -16,5 +16,10 @@
   <body>
     <div id="label-studio"></div>
     <script type="module" src="/src/standalone.js"></script>
+    <!--
+      Mounts the editor. Config and task come from `src/env/development.js` (`getExample()`),
+      so pick the example to work on by changing the `data` constant there.
+    -->
+    <script type="module" src="/src/standalone-init.js"></script>
   </body>
 </html>

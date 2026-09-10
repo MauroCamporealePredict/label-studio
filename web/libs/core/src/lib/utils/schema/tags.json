@@ -854,6 +854,27 @@
         "type": "number",
         "required": false,
         "default": 1
+      },
+      "showCurrentFrameLabel": {
+        "name": "showCurrentFrameLabel",
+        "description": "show the labels covering the frame on screen over the top left corner of the video",
+        "type": ["true", "false"],
+        "required": false,
+        "default": false
+      },
+      "groupTimelineRowsByLabel": {
+        "name": "groupTimelineRowsByLabel",
+        "description": "give each label a single timeline row holding all of its regions, instead of one row per region; stretches where two regions of the same label overlap are hatched",
+        "type": ["true", "false"],
+        "required": false,
+        "default": false
+      },
+      "selectRegionOnlyOnAnnotatedFrames": {
+        "name": "selectRegionOnlyOnAnnotatedFrames",
+        "description": "on the timeline, select a region only when clicking its annotated frames instead of anywhere on its row; sets the initial value of the matching toggle in the timeline settings, which annotators can then flip themselves",
+        "type": ["true", "false"],
+        "required": false,
+        "default": false
       }
     }
   },
@@ -2612,7 +2633,7 @@
   },
   "TimelineLabels": {
     "name": "TimelineLabels",
-    "description": "Use the TimelineLabels tag to classify video frames. This can be a single frame or a span of frames.\n\nFirst, select a label and then click once to annotate a single frame. Click and drag to annotate multiple frames.\n\n![Screenshot of video with frame classification](../images/timelinelabels.png)\n\nUse with the `<Video>` control tag.\n\n!!! info Tip\n    You can increase the height of the timeline using the `timelineHeight` parameter on the `<Video>` tag.",
+    "description": "Use the TimelineLabels tag to classify video frames. This can be a single frame or a span of frames.\n\nFirst, select a label and then click once to annotate a single frame. Click and drag to annotate multiple frames.\n\n![Screenshot of video with frame classification](../images/timelinelabels.png)\n\nUse with the `<Video>` control tag.\n\n!!! info Tip\n    You can increase the height of the timeline using the `timelineHeight` parameter on the `<Video>` tag.\n\n### Recording mode\n\nWith `recordingMode=\"true\"` clicking a label starts a \"recording\": while the video is playing every frame\nthat goes by is added to a region labeled with that label. Clicking the same label again stops the recording,\nclicking another label closes the current region and starts a new one. Recording stays armed while the video\nis paused and only extends the region during playback, so scrubbing the timeline doesn't label anything.",
     "attrs": {
       "name": {
         "name": "name",
@@ -2625,6 +2646,13 @@
         "description": "Name of the video element",
         "type": "string",
         "required": true
+      },
+      "recordingMode": {
+        "name": "recordingMode",
+        "description": "Label frames while the video is playing: click a label to start recording, click it again to stop",
+        "type": ["true", "false"],
+        "required": false,
+        "default": false
       }
     }
   },

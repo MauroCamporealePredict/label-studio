@@ -4,6 +4,7 @@ import type { FC, MouseEvent } from "react";
 import { Timeline } from "../Timeline";
 import type { TimelineViewProps } from "../Types";
 import * as viewsModule from "../Views";
+import * as seekerModule from "../Seeker";
 
 const MockView: FC<TimelineViewProps> = () => <div data-testid="timeline-mock-view" />;
 const MockControls: FC<{ onAction?: (e: MouseEvent<HTMLButtonElement>, action: string, data?: unknown) => void }> = ({
@@ -251,5 +252,53 @@ describe("Timeline", () => {
       await userEvent.click(actionBtn);
       expect(onAction).toHaveBeenCalledWith(expect.anything(), "test-action", {});
     }
+  });
+  describe("picking a window on the seeker", () => {
+    const viewProps: { current: TimelineViewProps | null } = { current: null };
+
+    beforeEach(() => {
+      viewProps.current = null;
+      (viewsModule.default as any).frames.View = ((props: TimelineViewProps) => {
+        viewProps.current = props;
+        return <div data-testid="timeline-mock-view" />;
+      }) as FC<TimelineViewProps>;
+
+      // the real Seeker needs layout to turn a click into a frame, which jsdom has none of
+      spyOn(seekerModule, "Seeker").mockImplementation((({ onIndicatorMove, onSeek }: any) => (
+        <div>
+          <button type="button" data-testid="seeker-move-window" onClick={() => onIndicatorMove(10)}>
+            move window
+          </button>
+          <button type="button" data-testid="seeker-click-bar" onClick={() => onSeek(60)}>
+            click bar
+          </button>
+        </div>
+      )) as any);
+    });
+
+    it("reports the window when the user drags it", async () => {
+      render(<Timeline {...defaultProps} />);
+
+      await userEvent.click(screen.getByTestId("seeker-move-window"));
+
+      expect(viewProps.current?.seekWindow).toEqual({ frame: 10, anchor: "window", nonce: 1 });
+    });
+
+    it("reports the window when the user clicks a point on the bar", async () => {
+      render(<Timeline {...defaultProps} />);
+
+      await userEvent.click(screen.getByTestId("seeker-click-bar"));
+
+      expect(viewProps.current?.seekWindow).toEqual({ frame: 60, anchor: "position", nonce: 1 });
+    });
+
+    it("bumps the nonce so picking the same window twice applies again", async () => {
+      render(<Timeline {...defaultProps} />);
+
+      await userEvent.click(screen.getByTestId("seeker-move-window"));
+      await userEvent.click(screen.getByTestId("seeker-move-window"));
+
+      expect(viewProps.current?.seekWindow?.nonce).toBe(2);
+    });
   });
 });

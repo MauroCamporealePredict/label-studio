@@ -6,7 +6,12 @@ import { cn } from "../../../../utils/bem";
 import { isDefined } from "../../../../utils/utilities";
 import type { MSTTimelineRegion, TimelineRegion, TimelineViewProps } from "../../Types";
 import { Keypoints } from "./Keypoints";
-import { computeKeypointsVirtualBounds, DEFAULT_TIMELINE_VIEWPORT_HEIGHT } from "./Utils";
+import {
+  computeKeypointsVirtualBounds,
+  coversFrameRange,
+  DEFAULT_TIMELINE_VIEWPORT_HEIGHT,
+  KEYPOINT_ROW_HEIGHT,
+} from "./Utils";
 import "./Frames.prefix.css";
 
 /**
@@ -31,6 +36,7 @@ export const Frames: FC<TimelineViewProps> = ({
   length = 1024,
   step,
   regions,
+  seekWindow,
   onScroll,
   onPositionChange,
   onResize,
@@ -335,6 +341,59 @@ export const Frames: FC<TimelineViewProps> = ({
     return () => target.removeEventListener("wheel", handler);
   }, []);
 
+  /**
+   * When the user picks a window on the seeker, scroll the row holding the most recently
+   * annotated region inside that window to the top of the visible area. A window with nothing
+   * annotated in it doesn't move the timeline at all.
+   *
+   * Rows grouped by label hold several regions, and the newest one of a row may well sit outside
+   * the window, so recency is compared region by region rather than by row order.
+   * @see HtxVideo#groupRegionsByLabel()
+   */
+  useEffect(() => {
+    const scroll = scrollable.current;
+
+    if (!isDefined(scroll) || !seekWindow || framesInView < 1) return;
+
+    // Dragging the window sets its start, so it is already the window to look at. Clicking the
+    // bar instead moves the playhead, and the timeline pages to the clicked frame only when it
+    // falls outside the window on screen — until then the visible window doesn't change.
+    /** @see the position effect below, which does the paging */
+    const windowStart =
+      seekWindow.anchor === "window"
+        ? seekWindow.frame
+        : seekWindow.frame > offset && seekWindow.frame <= offset + framesInView
+          ? offset
+          : roundToStep(seekWindow.frame - 1, framesInView);
+
+    const from = windowStart + 1;
+    const to = windowStart + framesInView;
+
+    let index = -1;
+    let newest = Number.NEGATIVE_INFINITY;
+
+    regions.forEach((region, row) => {
+      for (const candidate of region.members ?? [region]) {
+        if (!coversFrameRange(candidate.sequence, from, to, length)) continue;
+
+        // regions are numbered in the order they were annotated, so the highest is the newest
+        const rank = candidate.index ?? 0;
+
+        if (rank > newest) {
+          newest = rank;
+          index = row;
+        }
+      }
+    });
+
+    if (index < 0) return;
+
+    // the last rows can't reach the top, the content simply ends there
+    const limit = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+
+    setScroll({ top: clamp(index * KEYPOINT_ROW_HEIGHT, 0, limit) });
+  }, [seekWindow]);
+
   useEffect(() => {
     onResize?.(toSteps(scrollableWidth || 0, step));
   }, [viewWidth, step, scrollableWidth]);
@@ -468,8 +527,6 @@ interface KeypointsVirtualProps {
   disabled?: boolean;
   onSelectRegion: TimelineViewProps["onSelectRegion"];
 }
-
-const KEYPOINT_ROW_HEIGHT = 24;
 
 const KeypointsVirtual: FC<KeypointsVirtualProps> = ({
   regions,

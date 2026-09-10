@@ -1,5 +1,5 @@
 import { observer } from "mobx-react";
-import { type FC, useEffect, useMemo, useRef, useState } from "react";
+import { type FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocalStorageState } from "../../hooks/useLocalStorageState";
 import { useMemoizedHandlers } from "../../hooks/useMemoizedHandlers";
 import { cn } from "../../utils/bem";
@@ -8,7 +8,7 @@ import { TimelineContextProvider } from "./Context";
 import { Controls } from "./Controls";
 import { Seeker } from "./Seeker";
 import "./Timeline.prefix.css";
-import type { TimelineContextValue, TimelineControlsStepHandler, TimelineProps } from "./Types";
+import type { SeekWindowRequest, TimelineContextValue, TimelineControlsStepHandler, TimelineProps } from "./Types";
 import { default as Views } from "./Views";
 
 const TimelineComponent: FC<TimelineProps> = ({
@@ -42,6 +42,12 @@ const TimelineComponent: FC<TimelineProps> = ({
 
   const [currentPosition, setCurrentPosition] = useState(clamp(position, 1, Number.POSITIVE_INFINITY));
   const [seekOffset, setSeekOffset] = useState(0);
+  // set only by a direct interaction with the seeker, so the view reacts to that specifically
+  // and not to every horizontal scroll (which also updates `seekOffset`)
+  const [seekWindow, setSeekWindow] = useState<SeekWindowRequest | null>(null);
+  const pickSeekWindow = useCallback((frame: number, anchor: SeekWindowRequest["anchor"]) => {
+    setSeekWindow((previous) => ({ frame, anchor, nonce: (previous?.nonce ?? 0) + 1 }));
+  }, []);
   const [seekVisibleWidth, setSeekVisibleWidth] = useState(0);
   const [viewCollapsed, setViewCollapsed] = useLocalStorageState("video-timeline", false, {
     fromString(value) {
@@ -177,8 +183,14 @@ const TimelineComponent: FC<TimelineProps> = ({
           position={currentPosition}
           seekOffset={seekOffset}
           seekVisible={seekVisibleWidth}
-          onIndicatorMove={setSeekOffset}
-          onSeek={setInternalPosition}
+          onIndicatorMove={(value) => {
+            setSeekOffset(value);
+            pickSeekWindow(value, "window");
+          }}
+          onSeek={(value) => {
+            setInternalPosition(value);
+            pickSeekWindow(value, "position");
+          }}
           disabled={navigationBlocked}
           title={navigationBlocked ? navigationBlockedTooltip : undefined}
           minimap={View.Minimap ? <View.Minimap /> : null}
@@ -203,6 +215,7 @@ const TimelineComponent: FC<TimelineProps> = ({
         height={props.height}
         position={currentPosition}
         offset={seekOffset}
+        seekWindow={seekWindow}
         leftOffset={View.settings?.leftOffset}
         onReady={(data) => handlers.onReady?.(data)}
         onScroll={setSeekOffset}

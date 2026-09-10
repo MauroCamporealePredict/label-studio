@@ -154,7 +154,7 @@ beforeEach(() => {
   }));
 });
 
-const { HtxVideoView } = require("../HtxVideo");
+const { HtxVideoView, groupRegionsByLabel, currentFrameLabels } = require("../HtxVideo");
 
 function createMockItem(overrides = {}) {
   const ref = {
@@ -589,6 +589,68 @@ describe("HtxVideoView", () => {
     expect(onSelectInOutliner).toHaveBeenCalledWith(true);
   });
 
+  describe("selectRegionOnlyOnAnnotatedFrames", () => {
+    /** a click inside the region's row; `onLifespan` tells whether it hit its annotated frames */
+    const stripClick = (onLifespan) => ({
+      target: {
+        closest: (selector) => {
+          if (selector === "[data-timeline-strip]") return {};
+          if (selector === "[data-lifespan]") return onLifespan ? {} : null;
+          return null;
+        },
+      },
+    });
+
+    /** a click on the region's name, which sits outside the frames strip */
+    const labelClick = () => ({ target: { closest: () => null } });
+
+    const setup = async (extra) => {
+      const onClickRegion = mock();
+      const item = createMockItem({
+        findRegion: (id) => (id === "r1" ? { selected: false, inSelection: false, onClickRegion } : null),
+        ...extra,
+      });
+
+      render(<HtxVideoView item={item} store={createMockStore()} />);
+      await flushRaf();
+      await triggerVideoLoad();
+
+      return { onClickRegion, onSelectRegion: mockTimelineProps.onSelectRegion };
+    };
+
+    it("selects a region clicked on an empty frame of its row when the option is off", async () => {
+      const { onClickRegion, onSelectRegion } = await setup();
+
+      onSelectRegion(stripClick(false), "r1", true);
+
+      expect(onClickRegion).toHaveBeenCalled();
+    });
+
+    it("ignores a click on an empty frame of the row when the option is on", async () => {
+      const { onClickRegion, onSelectRegion } = await setup({ selectOnAnnotatedFramesOnly: true });
+
+      onSelectRegion(stripClick(false), "r1", true);
+
+      expect(onClickRegion).not.toHaveBeenCalled();
+    });
+
+    it("still selects a click on the annotated frames when the option is on", async () => {
+      const { onClickRegion, onSelectRegion } = await setup({ selectOnAnnotatedFramesOnly: true });
+
+      onSelectRegion(stripClick(true), "r1", true);
+
+      expect(onClickRegion).toHaveBeenCalled();
+    });
+
+    it("still selects when the region's name is clicked while the option is on", async () => {
+      const { onClickRegion, onSelectRegion } = await setup({ selectOnAnnotatedFramesOnly: true });
+
+      onSelectRegion(labelClick(), "r1", undefined);
+
+      expect(onClickRegion).toHaveBeenCalled();
+    });
+  });
+
   it("Timeline onSelectRegion does nothing when region not found", async () => {
     const item = createMockItem({ findRegion: mock(() => null) });
     const store = createMockStore();
@@ -823,5 +885,161 @@ describe("HtxVideoView", () => {
     expect(mockTimelineProps.regions).toBeDefined();
     const hasNew = (mockTimelineProps.regions || []).some((r) => r.id === "new" && r.label === "New");
     expect(hasNew).toBe(true);
+  });
+});
+
+describe("groupRegionsByLabel", () => {
+  const TOTAL = 100;
+  /** a region as HtxVideo hands it to the timeline */
+  const region = (id, label, index, ranges) => ({
+    id,
+    index,
+    label,
+    color: "#ff0000",
+    visible: true,
+    selected: false,
+    timeline: true,
+    sequence: ranges.flatMap(([start, end]) =>
+      start === end
+        ? [{ frame: start, enabled: false }]
+        : [
+            { frame: start, enabled: true },
+            { frame: end, enabled: false },
+          ],
+    ),
+  });
+
+  it("gives each label a single row", () => {
+    const rows = groupRegionsByLabel(
+      [region("a", "Moving", 3, [[30, 40]]), region("b", "Still", 2, [[20, 25]]), region("c", "Moving", 1, [[1, 10]])],
+      TOTAL,
+    );
+
+    expect(rows.map((row) => row.label)).toEqual(["Moving", "Still"]);
+    expect(rows[0].members.map((member) => member.id)).toEqual(["a", "c"]);
+  });
+
+  it("keeps the row of the most recent region on top", () => {
+    const rows = groupRegionsByLabel(
+      [region("newest", "Still", 9, [[1, 5]]), region("older", "Moving", 8, [[1, 5]])],
+      TOTAL,
+    );
+
+    expect(rows[0].label).toBe("Still");
+  });
+
+  it("merges the ranges of a label into one sequence", () => {
+    const rows = groupRegionsByLabel(
+      [region("a", "Moving", 2, [[1, 10]]), region("b", "Moving", 1, [[20, 25]])],
+      TOTAL,
+    );
+
+    expect(rows[0].sequence).toEqual([
+      { frame: 1, enabled: true },
+      { frame: 10, enabled: false },
+      { frame: 20, enabled: true },
+      { frame: 25, enabled: false },
+    ]);
+  });
+
+  it("joins ranges of the same label that overlap", () => {
+    const rows = groupRegionsByLabel([region("a", "Moving", 2, [[1, 10]]), region("b", "Moving", 1, [[6, 20]])], TOTAL);
+
+    expect(rows[0].sequence).toEqual([
+      { frame: 1, enabled: true },
+      { frame: 20, enabled: false },
+    ]);
+  });
+
+  it("reports the overlapping stretch so it can be hatched", () => {
+    const rows = groupRegionsByLabel([region("a", "Moving", 2, [[1, 10]]), region("b", "Moving", 1, [[6, 20]])], TOTAL);
+
+    expect(rows[0].overlaps).toEqual([[6, 10]]);
+  });
+
+  it("reports no overlap for regions of the same label that only follow each other", () => {
+    const rows = groupRegionsByLabel([region("a", "Moving", 2, [[1, 5]]), region("b", "Moving", 1, [[6, 10]])], TOTAL);
+
+    expect(rows[0].overlaps).toEqual([]);
+  });
+
+  it("counts the regions of the row in place of the region number", () => {
+    const rows = groupRegionsByLabel([region("a", "Moving", 2, [[1, 5]]), region("b", "Moving", 1, [[20, 25]])], TOTAL);
+
+    expect(rows[0].index).toBe(2);
+  });
+
+  it("keeps a row visible or selected when any of its regions is", () => {
+    const regions = [region("a", "Moving", 2, [[1, 5]]), region("b", "Moving", 1, [[20, 25]])];
+
+    regions[0].visible = false;
+    regions[1].selected = true;
+
+    const [row] = groupRegionsByLabel(regions, TOTAL);
+
+    expect(row.visible).toBe(true);
+    expect(row.selected).toBe(true);
+  });
+});
+
+describe("currentFrameLabels", () => {
+  const TOTAL = 100;
+  const reg = (labels, ranges, extra = {}) => ({
+    type: "timelineregion",
+    hidden: false,
+    labels,
+    style: { fillcolor: "#ff0000" },
+    sequence: ranges.flatMap(([start, end]) => [
+      { frame: start, enabled: true },
+      { frame: end, enabled: false },
+    ]),
+    ...extra,
+  });
+
+  it("is empty when no region covers the frame", () => {
+    expect(currentFrameLabels([reg(["Moving"], [[10, 20]])], 5, TOTAL)).toEqual([]);
+  });
+
+  it("returns the label covering the frame", () => {
+    expect(currentFrameLabels([reg(["Moving"], [[10, 20]])], 15, TOTAL)).toEqual([
+      { text: "Moving", color: "#ff0000" },
+    ]);
+  });
+
+  it("includes the frames at the edges of a region", () => {
+    const regions = [reg(["Moving"], [[10, 20]])];
+
+    expect(currentFrameLabels(regions, 10, TOTAL)).toHaveLength(1);
+    expect(currentFrameLabels(regions, 20, TOTAL)).toHaveLength(1);
+    expect(currentFrameLabels(regions, 21, TOTAL)).toHaveLength(0);
+  });
+
+  it("shows a label once even when several of its regions cover the frame", () => {
+    const regions = [reg(["Moving"], [[1, 20]]), reg(["Moving"], [[10, 30]])];
+
+    expect(currentFrameLabels(regions, 15, TOTAL)).toEqual([{ text: "Moving", color: "#ff0000" }]);
+  });
+
+  it("shows every distinct label covering the frame", () => {
+    const regions = [reg(["Moving"], [[1, 20]]), reg(["Still"], [[10, 30]], { style: { fillcolor: "#00ff00" } })];
+
+    expect(currentFrameLabels(regions, 15, TOTAL)).toEqual([
+      { text: "Moving", color: "#ff0000" },
+      { text: "Still", color: "#00ff00" },
+    ]);
+  });
+
+  it("skips hidden regions and regions that are not timeline ones", () => {
+    const regions = [
+      reg(["Hidden"], [[1, 20]], { hidden: true }),
+      reg(["Box"], [[1, 20]], { type: "videorectangleregion" }),
+      reg(["Moving"], [[1, 20]]),
+    ];
+
+    expect(currentFrameLabels(regions, 15, TOTAL).map(({ text }) => text)).toEqual(["Moving"]);
+  });
+
+  it("falls back to a placeholder for a region without labels", () => {
+    expect(currentFrameLabels([reg([], [[1, 20]])], 15, TOTAL)).toEqual([{ text: "Empty", color: "#ff0000" }]);
   });
 });

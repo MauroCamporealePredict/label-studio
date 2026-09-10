@@ -2,6 +2,7 @@
   --hover: transparent;
   --row-overlay-opacity: 8%;
 
+  /* keep in sync with KEYPOINT_ROW_HEIGHT in Views/Frames/Utils.ts */
   height: 24px;
   display: flex;
   background-color: var(--hover);
@@ -21,6 +22,11 @@
       linear-gradient(0deg, var(--hover), var(--hover) 100%),
       linear-gradient(0deg, var(--color-neutral-surface), var(--color-neutral-surface) 100%);
     box-shadow: 1px 0 0 rgb(var(--color-neutral-shadow-raw) / 5%);
+
+    /* The lifespans are composited on their own layer because of their transform, and while
+       scrolling Chromium can skip repainting this sticky column, letting the bars show through
+       it. Promoting the column to its own layer keeps it painted on top. */
+    will-change: transform;
   }
 
   &__data {
@@ -61,6 +67,25 @@
     &_hidden {
       opacity: 0.3;
     }
+  }
+
+  /* Rows grouped by label can hold two regions covering the same frames. They would just
+     stack into one flat bar, so the shared stretch gets diagonal stripes in the label colour
+     to make it visible that there is more than one region under there. */
+  &__overlap {
+    top: 50%;
+    z-index: 2;
+    height: 20px;
+    position: absolute;
+    pointer-events: none;
+    transform: translateY(-50%);
+    background: repeating-linear-gradient(
+      -45deg,
+      var(--point-color) 0,
+      var(--point-color) 2px,
+      transparent 2px,
+      transparent 5px
+    );
   }
 
   &_timeline &__lifespan {

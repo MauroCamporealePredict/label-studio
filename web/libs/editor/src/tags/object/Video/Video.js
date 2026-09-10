@@ -81,6 +81,9 @@ const isSyncedBuffering = ff.isActive(ff.FF_SYNCED_BUFFERING);
  * @param {number} [timelineHeight=64] height of the timeline with regions
  * @param {number} [defaultPlaybackSpeed=1] default playback speed the player should start with when loaded
  * @param {number} [minPlaybackSpeed=1] minimum allowed playback speed; defaultPlaybackSpeed cannot be set below this value
+ * @param {boolean} [showCurrentFrameLabel=false] show the labels covering the frame on screen over the top left corner of the video
+ * @param {boolean} [groupTimelineRowsByLabel=false] give each label a single timeline row holding all of its regions, instead of one row per region; stretches where two regions of the same label overlap are hatched
+ * @param {boolean} [selectRegionOnlyOnAnnotatedFrames=false] on the timeline, select a region only when clicking its annotated frames instead of anywhere on its row; sets the initial value of the matching toggle in the timeline settings, which annotators can then flip themselves
  */
 
 const TagAttrs = types.model({
@@ -92,6 +95,9 @@ const TagAttrs = types.model({
   muted: false,
   defaultplaybackspeed: types.optional(types.union(types.string, types.number), "1"),
   minplaybackspeed: types.optional(types.union(types.string, types.number), "0.25"),
+  selectregiononlyonannotatedframes: types.optional(types.boolean, false),
+  grouptimelinerowsbylabel: types.optional(types.boolean, false),
+  showcurrentframelabel: types.optional(types.boolean, false),
 });
 
 const Model = types
@@ -110,6 +116,9 @@ const Model = types
     length: 1,
     drawingRegion: null,
     loopTimelineRegion: false,
+    // session state the annotator can flip from the timeline settings;
+    // seeded from the `selectRegionOnlyOnAnnotatedFrames` attribute in `afterCreate()`
+    selectOnAnnotatedFramesOnly: false,
     stageRef: null,
     workingArea: null,
   }))
@@ -219,6 +228,9 @@ const Model = types
 
       // set initial speed to defaultPlaybackSpeed
       self.speed = self.defaultplaybackspeed;
+
+      // the tag attribute only seeds the toggle; the annotator can flip it per session
+      self.selectOnAnnotatedFramesOnly = self.selectregiononlyonannotatedframes;
     },
   }))
   .actions((self) => ({
@@ -384,6 +396,10 @@ const Model = types
     return {
       setLoopTimelineRegion(loop) {
         self.loopTimelineRegion = loop;
+      },
+
+      setSelectOnAnnotatedFramesOnly(value) {
+        self.selectOnAnnotatedFramesOnly = value;
       },
 
       setLength(length) {

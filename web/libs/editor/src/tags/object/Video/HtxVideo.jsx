@@ -1,3 +1,4 @@
+import chroma from "chroma-js";
 import { observer } from "mobx-react";
 import { getEnv } from "mobx-state-tree";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -10,6 +11,13 @@ import { ErrorMessage } from "../../../components/ErrorMessage/ErrorMessage";
 import ObjectTag from "../../../components/Tags/Object";
 import { VideoConfigControl } from "../../../components/Timeline/Controls/VideoConfigControl";
 import { Timeline } from "../../../components/Timeline/Timeline";
+import {
+  coversFrameRange,
+  intervalsToSequence,
+  lifespanIntervals,
+  mergeIntervals,
+  overlappingIntervals,
+} from "../../../components/Timeline/Views/Frames/Utils";
 import { clampZoom, VideoCanvas } from "../../../components/VideoCanvas/VideoCanvas";
 import {
   MAX_ZOOM_WHEEL,
@@ -128,10 +136,84 @@ const VideoConfig = observer(({ item }) => {
       onSpeedChange={item.handleSpeed}
       loopTimelineRegion={item.loopTimelineRegion}
       onLoopTimelineRegionChange={item.setLoopTimelineRegion}
+      selectOnAnnotatedFramesOnly={item.selectOnAnnotatedFramesOnly}
+      onSelectOnAnnotatedFramesOnlyChange={item.setSelectOnAnnotatedFramesOnly}
       minSpeed={item.minplaybackspeed}
     />
   );
 });
+
+/**
+ * Collapse the timeline rows so that every label gets a single row holding all of its regions.
+ *
+ * The row keeps a merged `sequence` so everything that reads a timeline region (the minimap, the
+ * seeker window lookup) keeps working, while `members` carries the individual regions so a click
+ * still resolves to the one under the cursor. `overlaps` marks the stretches where two of them
+ * would be drawn on top of each other.
+ *
+ * Rows follow the order they are given, which is newest first, so the row of the most recently
+ * annotated region stays on top.
+ */
+/**
+ * Labels covering the frame currently on screen, deduplicated so a label shows once even when
+ * several of its regions cover the frame.
+ * @see Video#showcurrentframelabel
+ */
+export const currentFrameLabels = (regions, frame, totalFrames) => {
+  const seen = new Set();
+
+  return regions
+    .filter((reg) => reg.type?.includes("timeline") && !reg.hidden)
+    .filter((reg) => coversFrameRange(reg.sequence, frame, frame, totalFrames))
+    .map((reg) => ({
+      text: reg.labels.join(", ") || "Empty",
+      color: reg.style?.fillcolor ?? reg.tag?.fillcolor ?? defaultStyle.fillcolor,
+    }))
+    .filter(({ text }) => {
+      if (seen.has(text)) return false;
+      seen.add(text);
+      return true;
+    });
+};
+
+export const groupRegionsByLabel = (regions, totalFrames) => {
+  const rows = new Map();
+
+  for (const region of regions) {
+    const row = rows.get(region.label);
+
+    if (row) {
+      row.members.push(region);
+      row.visible = row.visible || region.visible;
+      row.selected = row.selected || region.selected;
+    } else {
+      rows.set(region.label, {
+        id: `label:${region.label}`,
+        index: 1,
+        label: region.label,
+        color: region.color,
+        visible: region.visible,
+        selected: region.selected,
+        timeline: region.timeline,
+        locked: region.locked,
+        members: [region],
+        sequence: [],
+        overlaps: [],
+      });
+    }
+  }
+
+  return Array.from(rows.values()).map((row) => {
+    const intervals = row.members.flatMap((member) => lifespanIntervals(member.sequence, totalFrames));
+
+    return {
+      ...row,
+      index: row.members.length,
+      sequence: intervalsToSequence(mergeIntervals(intervals)),
+      overlaps: overlappingIntervals(intervals),
+    };
+  });
+};
 
 export const VIDEO_VECTOR_FRAME_BLOCKED_TOOLTIP = "Close the open VideoVector or delete it to change frames";
 
@@ -476,12 +558,22 @@ const HtxVideoView = ({ item, store }) => {
   });
 
   const handleSelectRegion = useCallback(
-    (_, id, select) => {
+    (e, id, select) => {
       const region = item.findRegion(id);
       const selected = region?.selected || region?.inSelection;
       const wasNotSelected = !selected;
 
       if (!region || (isDefined(select) && selected === select)) return;
+
+      // opt-in: ignore clicks that land on the region's row but outside its annotated frames,
+      // while still selecting when the region's name is clicked
+      /** @see Timeline/Views/Frames/Keypoints */
+      if (item.selectOnAnnotatedFramesOnly) {
+        const target = e?.target;
+        const onStrip = target?.closest?.("[data-timeline-strip]");
+
+        if (onStrip && !target.closest("[data-lifespan]")) return;
+      }
 
       region.onClickRegion();
 
@@ -605,10 +697,14 @@ const HtxVideoView = ({ item, store }) => {
   // new Timeline Regions are added at the top of timeline, so we have to reverse the order
   if (item.timelineControl) regions.reverse();
 
+  const timelineRows = item.grouptimelinerowsbylabel ? groupRegionsByLabel(regions, videoLength) : regions;
+
+  const frameLabels = item.showcurrentframelabel ? currentFrameLabels(item.regs, position, videoLength) : [];
+
   // when label is selected and user is ready to draw a new region, we create a labeled empty line at the top
   if (item.timelineControl?.selectedLabels?.length && !item.annotation.selectionSize && !item.drawingRegion) {
     const label = item.timelineControl.selectedLabels[0];
-    regions.unshift({
+    timelineRows.unshift({
       id: "new",
       label: label.value,
       color: label.background,
@@ -634,6 +730,19 @@ const HtxVideoView = ({ item, store }) => {
             onMouseDown={handlePan}
             onWheel={onZoomChange}
           >
+            {frameLabels.length > 0 && (
+              <div className={cn("video").elem("current-labels").toClassName()}>
+                {frameLabels.map(({ text, color }) => (
+                  <span
+                    key={text}
+                    className={cn("video").elem("current-label").toClassName()}
+                    style={{ background: color, color: chroma(color).luminance() > 0.45 ? "#000" : "#fff" }}
+                  >
+                    {text}
+                  </span>
+                ))}
+              </div>
+            )}
             {videoSize && (
               <>
                 {loaded && supportsRegions && (
@@ -692,7 +801,7 @@ const HtxVideoView = ({ item, store }) => {
             buffering={isSyncedBuffering ? item.isBuffering : false}
             length={videoLength}
             position={position}
-            regions={regions}
+            regions={timelineRows}
             height={item.timelineheight}
             altHopSize={store.settings.videoHopSize}
             allowFullscreen={false}

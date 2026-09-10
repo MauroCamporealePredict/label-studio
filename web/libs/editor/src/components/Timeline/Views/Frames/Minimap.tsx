@@ -12,13 +12,18 @@ export const Minimap: FC<any> = () => {
   const [step, setStep] = useState(0);
 
   const visualization = useMemo(() => {
-    return regions.map(({ id, color, sequence, locked }) => {
-      return {
-        id,
-        color,
-        lifespans: visualizeLifespans(sequence, step, locked),
-      };
-    });
+    return (
+      regions
+        .map(({ id, color, sequence, locked }) => {
+          return {
+            id,
+            color,
+            lifespans: visualizeLifespans(sequence, step, locked),
+          };
+        })
+        // the "new" placeholder row has nothing to draw, so it shouldn't take up a band
+        .filter(({ lifespans }) => lifespans.length > 0)
+    );
   }, [step, regions]);
 
   const { width: rootWidth = 0 } = useResizeObserver(root.current || []);
@@ -30,7 +35,7 @@ export const Minimap: FC<any> = () => {
 
   return (
     <div ref={root as any} className={cn("minimap").toClassName()}>
-      {visualization.slice(0, 5).map(({ id, color, lifespans }) => {
+      {visualization.map(({ id, color, lifespans }) => {
         return (
           <div key={id} className={cn("minimap").elem("region").toClassName()} style={{ "--color": color } as any}>
             {lifespans.map((connection, i) => {

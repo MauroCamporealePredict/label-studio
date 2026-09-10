@@ -17,7 +17,7 @@ export interface KeypointsProps {
 
 export const Keypoints: FC<KeypointsProps> = ({ idx, region, startOffset, renderable, onSelectRegion }) => {
   const { step, seekOffset, visibleWidth, length } = useContext(TimelineContext);
-  const { label, color, visible, sequence, selected, timeline, locked } = region;
+  const { label, color, visible, sequence, selected, timeline, locked, members, overlaps } = region;
 
   const extraSteps = useMemo(() => {
     return Math.round(visibleWidth / 2);
@@ -47,22 +47,42 @@ export const Keypoints: FC<KeypointsProps> = ({ idx, region, startOffset, render
     [startOffset, color, visible],
   );
 
+  const inView = useCallback(
+    (spans: Lifespan[]) =>
+      spans.map((span) => {
+        span.points = span.points.filter(({ frame }) => {
+          return frame >= minVisibleKeypointPosition && frame <= maxVisibleKeypointPosition;
+        });
+
+        return span;
+      }),
+    [minVisibleKeypointPosition, maxVisibleKeypointPosition],
+  );
+
   const lifespans = useMemo(() => {
-    if (!renderable) return [];
+    if (!renderable || members) return [];
 
-    return visualizeLifespans(sequence, step, locked).map((span) => {
-      span.points = span.points.filter(({ frame }) => {
-        return frame >= minVisibleKeypointPosition && frame <= maxVisibleKeypointPosition;
-      });
+    return inView(visualizeLifespans(sequence, step, locked));
+  }, [sequence, step, renderable, members, inView, locked]);
 
-      return span;
-    });
-  }, [sequence, start, step, renderable, minVisibleKeypointPosition, maxVisibleKeypointPosition, locked]);
+  /** grouped rows draw each region separately so a click still resolves to the one under it */
+  const memberLifespans = useMemo(() => {
+    if (!renderable || !members) return [];
+
+    return members.map((member) => ({
+      id: member.id,
+      offset: member.sequence[0] ? (member.sequence[0].frame - 1) * step : startOffset,
+      lifespans: inView(visualizeLifespans(member.sequence, step, member.locked)),
+    }));
+  }, [members, step, renderable, inView, startOffset]);
 
   const onSelectRegionHandler = useCallback(
     (e: MouseEvent<HTMLDivElement>, select?: boolean) => {
       e.stopPropagation();
-      onSelectRegion?.(e, region.id, select);
+      // on a grouped row the nearest id is the span under the cursor, not the row itself
+      const target = (e.target as Element)?.closest?.("[data-id]") as HTMLElement | null;
+
+      onSelectRegion?.(e, target?.dataset.id ?? region.id, select);
     },
     [region.id, onSelectRegion],
   );
@@ -85,11 +105,38 @@ export const Keypoints: FC<KeypointsProps> = ({ idx, region, startOffset, render
           <div className={cn("keypoints").elem("data-item").mod({ faded: true }).toClassName()}>{idx}</div>
         </div>
       </div>
+      {/*
+        The strip spans the whole timeline width, so a click lands on it even far away from the
+        annotated frames. `Video#selectRegionOnlyOnAnnotatedFrames` uses these two markers to tell
+        "clicked this region's frames" from "clicked an empty spot on this region's row".
+        @see HtxVideo#handleSelectRegion()
+      */}
       <div
         className={cn("keypoints").elem("keypoints").toClassName()}
+        data-timeline-strip
         onClick={(e: any) => onSelectRegionHandler(e, true)}
       >
-        <LifespansList lifespans={lifespans} step={step} visible={visible} offset={offset} />
+        {members ? (
+          memberLifespans.map((member) => (
+            <LifespansList
+              key={member.id}
+              regionId={member.id}
+              lifespans={member.lifespans}
+              step={step}
+              visible={visible}
+              offset={member.offset}
+            />
+          ))
+        ) : (
+          <LifespansList lifespans={lifespans} step={step} visible={visible} offset={offset} />
+        )}
+        {overlaps?.map(([from, to]) => (
+          <div
+            key={`overlap-${from}-${to}`}
+            className={cn("keypoints").elem("overlap").toClassName()}
+            style={{ left: (from - 1) * step + step / 2, width: (to - from + 1) * step }}
+          />
+        ))}
       </div>
     </div>
   );
@@ -100,9 +147,10 @@ interface LifespansListProps {
   step: number;
   offset: number;
   visible: boolean;
+  regionId?: string;
 }
 
-const LifespansList: FC<LifespansListProps> = ({ lifespans, step, offset, visible }) => {
+const LifespansList: FC<LifespansListProps> = ({ lifespans, step, offset, visible, regionId }) => {
   return (
     <>
       {lifespans.map((lifespan, i) => {
@@ -117,6 +165,7 @@ const LifespansList: FC<LifespansListProps> = ({ lifespans, step, offset, visibl
             isLast={isLast}
             visible={visible}
             points={points.map(({ frame }) => frame)}
+            regionId={regionId}
             {...data}
           />
         );
@@ -136,10 +185,11 @@ interface LifespanItemProps {
   isLast: boolean;
   points: number[];
   locked?: boolean;
+  regionId?: string;
 }
 
 const LifespanItem: FC<LifespanItemProps> = memo(
-  ({ mainOffset, width, start, step, offset, enabled, visible, isLast, points, locked }) => {
+  ({ mainOffset, width, start, step, offset, enabled, visible, isLast, points, locked, regionId }) => {
     const left = mainOffset + offset + step / 2;
     const right = isLast && enabled ? 0 : "auto";
     const finalWidth = isLast && enabled ? "auto" : width;
@@ -148,9 +198,13 @@ const LifespanItem: FC<LifespanItemProps> = memo(
     }, [left, right, finalWidth]);
 
     return (
+      // on a grouped row `regionId` puts the region id on the span itself, so clicking and edge
+      // dragging keep resolving to the region under the cursor rather than to the row
       <div
         className={cn("keypoints").elem("lifespan").mod({ hidden: !visible, instant: !width }).toClassName()}
         style={style}
+        data-lifespan
+        data-id={regionId}
       >
         {points.map((frame, i) => {
           const left = (frame - start) * step;

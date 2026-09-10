@@ -72,6 +72,8 @@ export interface TimelineViewProps {
   onScroll: (position: number) => void;
   onPositionChange: (position: number) => void;
   onResize: (position: number) => void;
+  /** set every time the user picks a window on the seeker; see Frames */
+  seekWindow?: SeekWindowRequest | null;
   onPlay?: TimelineProps["onPlay"];
   onPause?: TimelineProps["onPause"];
   onSeek?: TimelineProps["onSeek"];
@@ -86,6 +88,21 @@ export interface TimelineViewProps {
   onFinishDrawing?: TimelineProps["onFinishDrawing"];
   onVolumeChange?: TimelineProps["onVolumeChange"];
   onSpeedChange?: TimelineProps["onSpeedChange"];
+}
+
+/**
+ * A window the user picked on the seeker, used to scroll the regions annotated inside it into
+ * view. The anchor matters because the two interactions point at different things: dragging the
+ * window sets its start directly, while clicking the bar moves the playhead and the window
+ * follows only if the frame falls outside the one on screen.
+ */
+export interface SeekWindowRequest {
+  /** frame the user pointed at */
+  frame: number;
+  /** `window` when the window itself was moved, `position` when a point on the bar was clicked */
+  anchor: "window" | "position";
+  /** bumped on every interaction, so picking the same window twice still applies */
+  nonce: number;
 }
 
 // Full region stored in MST store
@@ -107,6 +124,10 @@ export interface TimelineRegion {
   /** is this timeline region with spans */
   timeline?: boolean;
   locked?: boolean;
+  /** regions sharing this row when rows are grouped by label; see HtxVideo#groupRegionsByLabel() */
+  members?: TimelineRegion[];
+  /** frame ranges where two of the `members` would be drawn on top of each other */
+  overlaps?: [number, number][];
 }
 
 export interface TimelineRegionKeyframe {

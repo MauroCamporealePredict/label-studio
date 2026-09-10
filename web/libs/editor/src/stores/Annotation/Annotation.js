@@ -699,6 +699,13 @@ const _Annotation = types
     deleteRegion(region) {
       if (region.isReadOnly()) return;
 
+      // Selecting a region applies its labels to the control tags, so deleting a selected
+      // region has to drop it from the selection too — otherwise those labels stay selected
+      // with no region behind them. `AreaMixin#deleteRegion()` does this already, but callers
+      // that delete a region directly (i.e. the trash button in the details panel) don't.
+      /** @see RegionStore#_updateResultsFromRegions() */
+      if (self.regionStore.selection.isSelected(region)) self.unselectAll(true);
+
       const { regions } = self.regionStore;
       // move all children into the parent region of the given one
       const children = regions.filter((r) => r.parentID === region.id);
