@@ -1,0 +1,48 @@
+title: Video Frame Recording
+type: community
+group: Videos
+image: /static/templates/video-frame-classification.png
+details: |
+  <h1>Label video frames by playing the video</h1>
+  <p>
+    Click a label to start recording: every frame that goes by while the video plays is added to
+    a region with that label. Click the same label again to stop, or another label to close the
+    current region and start a new one. Faster than dragging on the timeline for long videos.
+  </p>
+  <dl>
+    <dt>Industry Applications</dt>
+    <dd>medical imaging review, sports analysis, surveillance, quality assurance, behavioural coding</dd>
+    <dt>Associated Models</dt>
+    <dd>temporal segmentation, frame-level analysis, timeline labeling, event detection</dd>
+    <dt>Domain Terminology</dt>
+    <dd>video segmentation, temporal annotation, frame-based labeling, video timeline</dd>
+  </dl>
+config: |
+  <View>
+    <View style="display: flex; gap: 1em; align-items: flex-start">
+
+      <!-- Video column; min-width lets it shrink instead of pushing the labels off -->
+      <View style="flex: 1 1 auto; min-width: 0">
+        <!-- visible timeline rows = timelineHeight / 24 -->
+        <Video name="video" value="$video"
+               timelineHeight="240"
+               groupTimelineRowsByLabel="true"
+               selectRegionOnlyOnAnnotatedFrames="true"
+               showCurrentFrameLabel="true" />
+      </View>
+
+      <!-- Labels column, beside the video rather than under it -->
+      <View style="flex: 0 0 20%; min-width: 150px">
+        <TimelineLabels name="videoLabels" toName="video" recordingMode="true" showInline="false">
+          <Label value="Movement" background="#c813ec" hotkey="1" />
+          <Label value="Still" background="#1d81cd" hotkey="2" />
+          <Label value="Slow Motion" background="#54d651" hotkey="3" />
+        </TimelineLabels>
+      </View>
+
+    </View>
+  </View>
+
+  <!--{
+   "video": "/static/samples/opossum_snow.mp4"
+  }-->
