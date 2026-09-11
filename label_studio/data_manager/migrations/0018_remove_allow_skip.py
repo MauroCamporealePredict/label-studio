@@ -36,7 +36,11 @@ def forward_migration_job(*, migration_name: str) -> None:
         migration.save()
 
     try:
-        views = iterate_queryset(View.objects.all())
+        # Only the columns this job touches: without Redis the job runs inline, in the middle
+        # of this very migration, and the live model already declares fields that later
+        # migrations add (View.is_locked comes with 0019). Selecting them all would query
+        # columns that do not exist yet.
+        views = iterate_queryset(View.objects.all().only('data'))
         updated_count = 0
 
         for view in views:
@@ -75,7 +79,8 @@ def reverse_migration_job(*, migration_name: str) -> None:
 
     logger.info(f'Starting reverse migration {migration_name}')
 
-    views = iterate_queryset(View.objects.all())
+    # same reason as in the forward job: keep the query to the columns that surely exist
+    views = iterate_queryset(View.objects.all().only('data'))
     updated_count = 0
 
     for view in views:
