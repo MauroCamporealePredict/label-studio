@@ -584,6 +584,13 @@ const HtxVideoView = ({ item, store }) => {
     [item],
   );
 
+  const handleHop = useCallback(
+    (hop) => {
+      item.timelineControl?.handleHop?.(hop);
+    },
+    [item],
+  );
+
   const handleAction = useCallback(
     (_, action, data) => {
       const regions = item.regs.filter((reg) => reg.selected || reg.inSelection);
@@ -845,6 +852,7 @@ const HtxVideoView = ({ item, store }) => {
             onPlay={handlePlayClick}
             onPause={handlePauseClick}
             onFullscreenToggle={handleFullscreenToggle}
+            onHop={handleHop}
             onSelectRegion={handleSelectRegion}
             onStartDrawing={item.startDrawing}
             onFinishDrawing={item.finishDrawing}

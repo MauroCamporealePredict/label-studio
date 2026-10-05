@@ -80,6 +80,7 @@ const TimelineComponent: FC<TimelineProps> = ({
     onAction: props.onAction,
     onFullscreenToggle: props.onFullscreenToggle,
     onSpeedChange: props.onSpeedChange,
+    onHop: props.onHop,
   });
 
   const setInternalPosition = (newPosition: number) => {
@@ -93,6 +94,20 @@ const TimelineComponent: FC<TimelineProps> = ({
 
       return currentPosition;
     });
+  };
+
+  /**
+   * Move the playhead, and when the jump came from the hop controls say so: a control tag may
+   * want to label the frames travelled over. Skipping to the very start or end is not a hop.
+   */
+  const hop = (to: number, isHop: boolean) => {
+    const target = clamp(to, 1, length);
+
+    if (isHop && target !== currentPosition) {
+      handlers.onHop?.({ from: currentPosition, to: target });
+    }
+
+    setInternalPosition(target);
   };
 
   const increasePosition: TimelineControlsStepHandler = (_, stepSize) => {
@@ -156,8 +171,8 @@ const TimelineComponent: FC<TimelineProps> = ({
         onVolumeChange={props.onVolumeChange}
         onStepBackward={decreasePosition}
         onStepForward={increasePosition}
-        onRewind={(steps) => setInternalPosition(isDefined(steps) ? currentPosition - steps : 0)}
-        onForward={(steps) => setInternalPosition(isDefined(steps) ? currentPosition + steps : length)}
+        onRewind={(steps) => hop(isDefined(steps) ? currentPosition - steps : 0, isDefined(steps))}
+        onForward={(steps) => hop(isDefined(steps) ? currentPosition + steps : length, isDefined(steps))}
         onPositionChange={setInternalPosition}
         onToggleCollapsed={setViewCollapsed}
         formatPosition={formatPosition}

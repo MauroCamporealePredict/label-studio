@@ -107,8 +107,7 @@ const TimelineLabelsModel = Composition.volatile(() => ({
     const wasRecordingThisLabel = self.isRecording && self.recordingLabel === label;
     // The frame on screen has already been recorded into the region we are about to close, so
     // the new one has to start on the next one — otherwise that frame carries both labels.
-    const closedAt =
-      self.recordingRegion && isAlive(self.recordingRegion) ? self.recordingRegion.ranges[0]?.end : null;
+    const closedAt = self.recordingRegion && isAlive(self.recordingRegion) ? self.recordingRegion.ranges[0]?.end : null;
 
     self.stopRecording();
     self.unselectAll();
@@ -197,6 +196,115 @@ const TimelineLabelsModel = Composition.volatile(() => ({
 
     // the video can't go any further, so close the region
     if (video.length && frame >= video.length) self.stopRecording();
+  },
+
+  /**
+   * Label (or unlabel) the frames a hop jumped over, with the label the annotator picked.
+   * Hopping forward paints them, hopping backward clears them again — the quick way to fix an
+   * overshoot without touching the timeline.
+   * @param {Object} hop
+   * @param {number} hop.from frame the hop started on
+   * @param {number} hop.to frame it landed on
+   * @returns {boolean} true when the hop was turned into labelling
+   */
+  handleHop({ from, to }) {
+    if (!self.recordingmode || from === to) return false;
+    if (self.annotation.isReadOnly()) return false;
+
+    const label = self.recordingLabel ?? self.selectedLabels[0];
+
+    if (!label || !self.toNameTag) return false;
+
+    const [start, end] = from < to ? [from, to] : [to, from];
+
+    if (to > from) self.labelFrames(label, start, end);
+    else self.unlabelFrames(label, start, end);
+
+    return true;
+  },
+
+  /** regions of this control carrying the given label, in timeline order */
+  labelRegions(label) {
+    const video = self.toNameTag;
+
+    return self.annotation.regions
+      .filter((region) => region.type === "timelineregion" && region.parent === video)
+      .filter((region) => region.ranges?.length && region.labels?.includes(label.value))
+      .sort((a, b) => a.ranges[0].start - b.ranges[0].start);
+  },
+
+  /** Cover `[start, end]` with `label`, growing a neighbouring region rather than piling up */
+  labelFrames(label, start, end) {
+    let from = start;
+    let to = end;
+    const touching = self.labelRegions(label).filter((region) => {
+      const range = region.ranges[0];
+
+      // frame-to-frame neighbours count, so hop after hop builds one region instead of a chain
+      return range.end >= from - 1 && range.start <= to + 1;
+    });
+
+    for (const region of touching) {
+      from = Math.min(from, region.ranges[0].start);
+      to = Math.max(to, region.ranges[0].end);
+    }
+
+    if (!touching.length) {
+      self.createLabelledRegion(label, from, to);
+      return;
+    }
+
+    // keep the region being recorded if it is one of these, so the recording survives the hop
+    const [kept, ...absorbed] = [...touching].sort((a, b) =>
+      a === self.recordingRegion ? -1 : b === self.recordingRegion ? 1 : 0,
+    );
+
+    kept.setRange([from, to]);
+    absorbed.forEach((region) => region.deleteRegion());
+
+    if (kept === self.recordingRegion) self.recordingStartFrame = from;
+  },
+
+  /** Clear `label` from `[start, end]`, shrinking, splitting or removing the regions it meets */
+  unlabelFrames(label, start, end) {
+    for (const region of self.labelRegions(label)) {
+      const { start: regionStart, end: regionEnd } = region.ranges[0];
+
+      if (regionEnd < start || regionStart > end) continue;
+
+      if (regionStart >= start && regionEnd <= end) {
+        region.deleteRegion();
+        continue;
+      }
+
+      if (regionStart < start && regionEnd > end) {
+        // the cleared stretch sits inside the region, so what is left is two of them
+        region.setRange([regionStart, start - 1]);
+        self.createLabelledRegion(label, end + 1, regionEnd);
+        continue;
+      }
+
+      region.setRange(regionStart < start ? [regionStart, start - 1] : [end + 1, regionEnd]);
+    }
+  },
+
+  createLabelledRegion(label, start, end) {
+    const video = self.toNameTag;
+
+    // the region takes its labels from the current selection, so make sure it is the right one
+    if (!label.selected) {
+      self.unselectAll();
+      label.setSelected(true);
+    }
+
+    const region = video.addTimelineRegion({ frame: start });
+
+    // creating a result unselects the labels unless "keep labels selected" is on
+    label.setSelected(true);
+
+    region?.setRange([start, end]);
+
+    return region;
   },
 
   stopRecording() {

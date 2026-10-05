@@ -29,22 +29,35 @@ const FakeRegion = types
     id: types.identifier,
     start: types.number,
     end: types.number,
+    labels: types.array(types.string),
   })
+  .volatile(() => ({
+    type: "timelineregion",
+    parent: null,
+    remover: null,
+  }))
   .views((self) => ({
     get ranges() {
       return [{ start: self.start, end: self.end }];
     },
   }))
   .actions((self) => ({
+    attach(video, remover) {
+      self.parent = video;
+      self.remover = remover;
+    },
     setRange([start, end]) {
       self.start = start;
       self.end = end;
     },
+    deleteRegion() {
+      self.remover(self);
+    },
   }));
 
 const FakeRegionStore = types.model("FakeRegionStore", { regions: types.array(FakeRegion) }).actions((self) => ({
-  add(frame) {
-    self.regions.push({ id: `r${self.regions.length}`, start: frame, end: frame });
+  add(frame, labels = []) {
+    self.regions.push({ id: `r${self.regions.length}-${Date.now()}`, start: frame, end: frame, labels });
     return self.regions[self.regions.length - 1];
   },
   // a protected tree can only be modified from an action, which is also how the
@@ -86,8 +99,16 @@ function createVideo() {
     },
     /** stands in for the store unselecting labels in `afterCreateResult()` */
     onRegionCreated: null,
+    /** the timeline control, wired by the tests the way `Video#timelineControl` resolves it */
+    control: null,
+    regions: store.regions,
     startDrawing: mock(function startDrawing({ frame }) {
-      const region = store.add(frame);
+      return video.addTimelineRegion({ frame });
+    }),
+    addTimelineRegion: mock(function addTimelineRegion({ frame }) {
+      const region = store.add(frame, video.control?.selectedValues() ?? []);
+
+      region.attach(video, (r) => store.remove(r));
       createdRegions.push(region);
       video.onRegionCreated?.();
       return region;
@@ -101,8 +122,11 @@ function createTag(config) {
   const treeConfig = Tree.treeToModel(config, storeRef);
   const ViewModel = Registry.getModelByTag("view");
   const root = ViewModel.create(treeConfig);
+  const tag = root.children.find((c) => c.type === "timelinelabels");
 
-  return root.children.find((c) => c.type === "timelinelabels");
+  video.control = tag;
+
+  return tag;
 }
 
 const CONFIG = (attrs = "") => `<View>
@@ -122,6 +146,9 @@ beforeEach(() => {
     isReadOnly: () => false,
     names: new Map([["vid", video]]),
     regionStore: { regions: [] },
+    get regions() {
+      return Array.from(video.regions);
+    },
     selectedRegions: [],
     selectedDrawingRegions: [],
     unselectAll: mock(),
@@ -344,5 +371,146 @@ describe("TimelineLabels recording mode", () => {
 
     expect(tag.isRecording).toBe(false);
     expect(video.startDrawing).not.toHaveBeenCalled();
+  });
+});
+
+describe("TimelineLabels hop labelling", () => {
+  /** frames covered by the regions carrying `value`, in timeline order */
+  const coverage = (tag, value = "A") =>
+    tag
+      .labelRegions(tag.tiedChildren.find((l) => l.value === value))
+      .map(({ ranges }) => [ranges[0].start, ranges[0].end]);
+
+  /** arm the recording on a label without playing anything */
+  const armed = (value = "A") => {
+    const tag = createTag(CONFIG('recordingMode="true"'));
+
+    tag.tiedChildren.find((l) => l.value === value).onLabelInteract();
+
+    return tag;
+  };
+
+  it("does nothing when recording mode is off", () => {
+    const tag = createTag(CONFIG());
+
+    tag.tiedChildren[0].setSelected(true);
+
+    expect(tag.handleHop({ from: 10, to: 20 })).toBe(false);
+    expect(createdRegions).toHaveLength(0);
+  });
+
+  it("does nothing without a label to apply", () => {
+    const tag = createTag(CONFIG('recordingMode="true"'));
+
+    expect(tag.handleHop({ from: 10, to: 20 })).toBe(false);
+    expect(createdRegions).toHaveLength(0);
+  });
+
+  it("labels the frames a forward hop jumped over", () => {
+    const tag = armed();
+
+    tag.handleHop({ from: 10, to: 20 });
+
+    expect(coverage(tag)).toEqual([[10, 20]]);
+  });
+
+  it("grows one region across consecutive hops instead of leaving a chain", () => {
+    const tag = armed();
+
+    tag.handleHop({ from: 10, to: 20 });
+    tag.handleHop({ from: 20, to: 30 });
+    tag.handleHop({ from: 30, to: 40 });
+
+    expect(coverage(tag)).toEqual([[10, 40]]);
+  });
+
+  it("joins up with a region that ends right before the hop", () => {
+    const tag = armed();
+
+    tag.handleHop({ from: 1, to: 10 });
+    // starts on the very next frame, so the two belong together
+    tag.handleHop({ from: 11, to: 20 });
+
+    expect(coverage(tag)).toEqual([[1, 20]]);
+  });
+
+  it("keeps regions apart when the hop leaves a gap", () => {
+    const tag = armed();
+
+    tag.handleHop({ from: 1, to: 10 });
+    tag.handleHop({ from: 30, to: 40 });
+
+    expect(coverage(tag)).toEqual([
+      [1, 10],
+      [30, 40],
+    ]);
+  });
+
+  it("clears the frames a backward hop came over", () => {
+    const tag = armed();
+
+    tag.handleHop({ from: 10, to: 40 });
+    tag.handleHop({ from: 40, to: 30 });
+
+    expect(coverage(tag)).toEqual([[10, 29]]);
+  });
+
+  it("removes the region when a backward hop covers all of it", () => {
+    const tag = armed();
+
+    tag.handleHop({ from: 20, to: 30 });
+    tag.handleHop({ from: 35, to: 15 });
+
+    expect(coverage(tag)).toEqual([]);
+  });
+
+  it("splits a region when the cleared frames sit inside it", () => {
+    const tag = armed();
+
+    tag.handleHop({ from: 1, to: 50 });
+    // walk forward past the middle, then clear the way back
+    tag.handleHop({ from: 30, to: 20 });
+
+    expect(coverage(tag)).toEqual([
+      [1, 19],
+      [31, 50],
+    ]);
+  });
+
+  it("trims the head when the cleared frames reach the start of a region", () => {
+    const tag = armed();
+
+    tag.handleHop({ from: 20, to: 40 });
+    tag.handleHop({ from: 25, to: 5 });
+
+    expect(coverage(tag)).toEqual([[26, 40]]);
+  });
+
+  it("leaves other labels alone", () => {
+    const tag = armed("A");
+
+    tag.handleHop({ from: 10, to: 20 });
+
+    tag.tiedChildren.find((l) => l.value === "B").onLabelInteract();
+    tag.handleHop({ from: 10, to: 20 });
+
+    expect(coverage(tag, "A")).toEqual([[10, 20]]);
+    expect(coverage(tag, "B")).toEqual([[10, 20]]);
+  });
+
+  it("ignores a hop that does not move", () => {
+    const tag = armed();
+
+    expect(tag.handleHop({ from: 10, to: 10 })).toBe(false);
+    expect(coverage(tag)).toEqual([]);
+  });
+
+  it("does not label in read-only mode", () => {
+    const tag = armed();
+
+    mockAnnotation.isReadOnly = () => true;
+
+    expect(tag.handleHop({ from: 10, to: 20 })).toBe(false);
+    expect(coverage(tag)).toEqual([]);
   });
 });

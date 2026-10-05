@@ -4,6 +4,7 @@ import type { FC, MouseEvent } from "react";
 import { Timeline } from "../Timeline";
 import type { TimelineViewProps } from "../Types";
 import * as viewsModule from "../Views";
+import * as controlsModule from "../Controls";
 import * as seekerModule from "../Seeker";
 
 const MockView: FC<TimelineViewProps> = () => <div data-testid="timeline-mock-view" />;
@@ -299,6 +300,68 @@ describe("Timeline", () => {
       await userEvent.click(screen.getByTestId("seeker-move-window"));
 
       expect(viewProps.current?.seekWindow?.nonce).toBe(2);
+    });
+  });
+
+  describe("hopping with the transport controls", () => {
+    /** stands in for the transport controls, exposing the four jumps as buttons */
+    const HopControls: FC<any> = ({ onRewind, onForward }) => (
+      <div>
+        <button type="button" data-testid="hop-back" onClick={() => onRewind?.(10)} />
+        <button type="button" data-testid="hop-forward" onClick={() => onForward?.(10)} />
+        <button type="button" data-testid="skip-start" onClick={() => onRewind?.()} />
+        <button type="button" data-testid="skip-end" onClick={() => onForward?.()} />
+      </div>
+    );
+
+    let spy: any;
+
+    beforeEach(() => {
+      spy = spyOn(controlsModule, "Controls").mockImplementation(HopControls as any);
+    });
+
+    // the module is shared with every other suite in the run, so hand it back
+    afterEach(() => spy.mockRestore());
+
+    const renderAt = (position: number, onHop: any) =>
+      render(<Timeline {...defaultProps} position={position} altHopSize={10} onHop={onHop} />);
+
+    it("reports the frames a forward hop travels over", async () => {
+      const onHop = mock();
+      renderAt(20, onHop);
+
+      await userEvent.click(screen.getByTestId("hop-forward"));
+
+      expect(onHop).toHaveBeenCalledWith({ from: 20, to: 30 });
+    });
+
+    it("reports the frames a backward hop travels over", async () => {
+      const onHop = mock();
+      renderAt(20, onHop);
+
+      await userEvent.click(screen.getByTestId("hop-back"));
+
+      expect(onHop).toHaveBeenCalledWith({ from: 20, to: 10 });
+    });
+
+    it("does not report skipping to the start or to the end as a hop", async () => {
+      const onHop = mock();
+      renderAt(20, onHop);
+
+      await userEvent.click(screen.getByTestId("skip-start"));
+      await userEvent.click(screen.getByTestId("skip-end"));
+
+      expect(onHop).not.toHaveBeenCalled();
+    });
+
+    it("does not report a hop that runs into the start of the video", async () => {
+      const onHop = mock();
+      // already on frame 1, so hopping back has nowhere to go
+      renderAt(1, onHop);
+
+      await userEvent.click(screen.getByTestId("hop-back"));
+
+      expect(onHop).not.toHaveBeenCalled();
     });
   });
 });

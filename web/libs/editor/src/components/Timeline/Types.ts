@@ -9,6 +9,11 @@ export type TimelineControls = Partial<Record<keyof typeof Controls, boolean>> &
 };
 
 export interface TimelineProps<D extends ViewTypes = "frames"> {
+  /**
+   * The annotator jumped by a fixed number of frames with the hop controls.
+   * `from` and `to` bound the frames travelled over, so a control tag can label them.
+   */
+  onHop?: (hop: { from: number; to: number }) => void;
   regions: any[];
   length: number;
   position: number;
