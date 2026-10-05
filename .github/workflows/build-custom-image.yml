@@ -39,9 +39,15 @@ jobs:
 
       - name: Collect the commit details shown on the version page
         id: commit
+        # The Dockerfile writes the message into a Python string between single quotes, so a quote
+        # in the message (say "region's") breaks that file and the app can't start. Drop quotes
+        # and backslashes: the message is only there to be read on the version page.
         run: |
+          message=$(git log -1 --pretty=%s)
+          message=${message//\'/}
+          message=${message//\\/}
           {
-            echo "message=$(git log -1 --pretty=%s)"
+            echo "message=$message"
             echo "date=$(git log -1 --pretty=%cI)"
           } >> "$GITHUB_OUTPUT"
 
