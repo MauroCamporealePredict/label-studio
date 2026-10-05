@@ -1,5 +1,6 @@
 import { inject, observer } from "mobx-react";
-import type { FC } from "react";
+import { isAlive } from "mobx-state-tree";
+import { type FC, useRef } from "react";
 import { cn } from "../../../utils/bem";
 import { Comments as CommentsComponent } from "../../Comments/Comments";
 import { AnnotationHistory } from "../../CurrentEntity/AnnotationHistory";
@@ -41,7 +42,9 @@ const DetailsComponent: FC<DetailsPanelProps> = ({ currentEntity, regions }) => 
 };
 
 const Content: FC<any> = observer(function Content({ selection, currentEntity }: any): JSX.Element {
-  return <>{selection.size ? <RegionsPanel regions={selection} /> : <GeneralPanel currentEntity={currentEntity} />}</>;
+  return (
+    <>{selection.size ? <RegionsPanel list={selection.list} /> : <GeneralPanel currentEntity={currentEntity} />}</>
+  );
 });
 
 const CommentsTab: FC<any> = inject("store")(
@@ -129,21 +132,36 @@ const HistoryTab: FC<any> = inject("store")(
 
 const InfoTab: FC<any> = inject("store")(
   observer(function InfoTab({ selection }: any): JSX.Element {
-    const nothingSelected = !selection || selection.size === 0;
+    // `size` is what tells a selection apart from none, even when the list disagrees with it
+    const hasSelection = Boolean(selection?.size);
+    const selected = hasSelection ? (selection.list ?? []) : [];
+    // Deselecting used to empty the panel, which loses the numbers right after you have been
+    // reading them. Hold on to the last regions instead, and say they are no longer selected.
+    const lastSelected = useRef<any[]>([]);
+
+    if (selected.length) lastSelected.current = selected;
+
+    // whatever was remembered may have been deleted in the meantime
+    const regions = hasSelection ? selected : lastSelected.current.filter((region) => isAlive(region));
+    const deselected = !hasSelection && regions.length > 0;
+
     return (
       <>
         <div className={cn("info").toClassName()}>
           <div className={cn("info").elem("section-tab").toClassName()}>
-            {nothingSelected ? (
+            {!hasSelection && regions.length === 0 ? (
               <EmptyState
                 icon={<IconCursor width={24} height={24} />}
                 header="View region details"
                 description={<>Select a region to view its properties, metadata and available actions</>}
               />
             ) : (
-              <>
-                <RegionsPanel regions={selection} />
-              </>
+              <div className={cn("info").elem("regions").mod({ deselected }).toClassName()}>
+                {deselected && (
+                  <div className={cn("info").elem("deselected-note").toClassName()}>Last selected region</div>
+                )}
+                <RegionsPanel list={regions} />
+              </div>
             )}
           </div>
         </div>
@@ -206,10 +224,10 @@ const GeneralPanel: FC<any> = inject("store")(
 
 GeneralPanel.displayName = "GeneralPanel";
 
-const RegionsPanel: FC<{ regions: any }> = observer(function RegionsPanel({ regions }: { regions: any }): JSX.Element {
+const RegionsPanel: FC<{ list: any[] }> = observer(function RegionsPanel({ list }: { list: any[] }): JSX.Element {
   return (
     <div>
-      {regions.list.map((reg: any) => {
+      {list.map((reg: any) => {
         return <SelectedRegion key={reg.id} region={reg} />;
       })}
     </div>

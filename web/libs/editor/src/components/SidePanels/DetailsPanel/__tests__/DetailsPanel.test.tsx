@@ -9,12 +9,17 @@ import * as relationsControlsModule from "../RelationsControls";
 import * as emptyStateModule from "../../Components/EmptyState";
 import * as iconsModule from "@humansignal/icons";
 import * as docsModule from "../../../../utils/docs";
+import * as mstModule from "mobx-state-tree";
 import { Relations, Info } from "../DetailsPanel";
 
 const injectedStore = { hasInterface: () => false };
+let isAliveSpy: any;
 
 describe("DetailsPanel", () => {
   beforeEach(() => {
+    // the panel checks remembered regions are still alive; these are plain objects
+    isAliveSpy = spyOn(mstModule, "isAlive").mockImplementation(() => true);
+
     spyOn(bemModule, "cn").mockImplementation((block: string) => ({
       elem: (elem: string) => ({
         toClassName: () => `dm-${block}__${elem}`,
@@ -318,6 +323,56 @@ describe("DetailsPanel", () => {
         // But also won't render region items since list is empty
         const detailedRegions = screen.queryAllByTestId("detailed-region");
         expect(detailedRegions).toHaveLength(0);
+      });
+    });
+    describe("keeping the last region after it is deselected", () => {
+      const region = (id: string) => ({ id, type: "timelineregion" });
+      const selectionOf = (...list: any[]) => ({ size: list.length, list });
+
+      it("still shows the region once nothing is selected any more", () => {
+        const { rerender } = render(<Info selection={selectionOf(region("r1"))} store={injectedStore} />);
+
+        rerender(<Info selection={selectionOf()} store={injectedStore} />);
+
+        expect(screen.queryAllByTestId("detailed-region")).toHaveLength(1);
+        expect(screen.queryByTestId("empty-state")).not.toBeInTheDocument();
+      });
+
+      it("says the region is no longer selected", () => {
+        const { rerender } = render(<Info selection={selectionOf(region("r1"))} store={injectedStore} />);
+
+        expect(screen.queryByText("Last selected region")).not.toBeInTheDocument();
+
+        rerender(<Info selection={selectionOf()} store={injectedStore} />);
+
+        expect(screen.getByText("Last selected region")).toBeInTheDocument();
+      });
+
+      it("drops the note again when something is selected", () => {
+        const { rerender } = render(<Info selection={selectionOf(region("r1"))} store={injectedStore} />);
+
+        rerender(<Info selection={selectionOf()} store={injectedStore} />);
+        rerender(<Info selection={selectionOf(region("r2"))} store={injectedStore} />);
+
+        expect(screen.queryByText("Last selected region")).not.toBeInTheDocument();
+        expect(screen.queryAllByTestId("detailed-region")).toHaveLength(1);
+      });
+
+      it("forgets a remembered region that has been deleted", () => {
+        const deleted = region("gone");
+        const { rerender } = render(<Info selection={selectionOf(deleted)} store={injectedStore} />);
+
+        isAliveSpy.mockImplementation(() => false);
+        rerender(<Info selection={selectionOf()} store={injectedStore} />);
+
+        expect(screen.queryAllByTestId("detailed-region")).toHaveLength(0);
+        expect(screen.getByTestId("empty-state")).toBeInTheDocument();
+      });
+
+      it("shows the empty state until something has been selected at least once", () => {
+        render(<Info selection={selectionOf()} store={injectedStore} />);
+
+        expect(screen.getByTestId("empty-state")).toBeInTheDocument();
       });
     });
   });

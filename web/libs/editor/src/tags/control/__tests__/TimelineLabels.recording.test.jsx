@@ -486,16 +486,24 @@ describe("TimelineLabels hop labelling", () => {
     expect(coverage(tag)).toEqual([[26, 40]]);
   });
 
-  it("leaves other labels alone", () => {
-    const tag = armed("A");
+  it("clears one label without touching another over the same frames", () => {
+    const tag = createTag(CONFIG('recordingMode="true"'));
+    const [labelA, labelB] = tag.tiedChildren;
 
-    tag.handleHop({ from: 10, to: 20 });
+    labelA.onLabelInteract();
+    tag.handleHop({ from: 1, to: 20 });
+    labelA.onLabelInteract(); // stop, so B is free to cover the same stretch
 
-    tag.tiedChildren.find((l) => l.value === "B").onLabelInteract();
-    tag.handleHop({ from: 10, to: 20 });
+    labelB.onLabelInteract();
+    tag.handleHop({ from: 5, to: 15 });
 
-    expect(coverage(tag, "A")).toEqual([[10, 20]]);
-    expect(coverage(tag, "B")).toEqual([[10, 20]]);
+    expect(coverage(tag, "A")).toEqual([[1, 20]]);
+    expect(coverage(tag, "B")).toEqual([[5, 15]]);
+
+    tag.handleHop({ from: 15, to: 5 });
+
+    expect(coverage(tag, "B")).toEqual([]);
+    expect(coverage(tag, "A")).toEqual([[1, 20]]);
   });
 
   it("ignores a hop that does not move", () => {
@@ -512,5 +520,114 @@ describe("TimelineLabels hop labelling", () => {
 
     expect(tag.handleHop({ from: 10, to: 20 })).toBe(false);
     expect(coverage(tag)).toEqual([]);
+  });
+  describe("no frame belongs to two labels", () => {
+    const coverageOf = (tag, value) =>
+      tag
+        .labelRegions(tag.tiedChildren.find((l) => l.value === value))
+        .map(({ ranges }) => [ranges[0].start, ranges[0].end]);
+
+    it("hops the new label on from the frame after the previous region", () => {
+      const tag = createTag(CONFIG('recordingMode="true"'));
+      const [labelA, labelB] = tag.tiedChildren;
+
+      labelA.onLabelInteract();
+      tag.handleHop({ from: 1, to: 30 });
+
+      // the playhead now sits on frame 30, the last frame region A owns
+      labelB.onLabelInteract();
+      tag.handleHop({ from: 30, to: 40 });
+
+      expect(coverageOf(tag, "A")).toEqual([[1, 30]]);
+      expect(coverageOf(tag, "B")).toEqual([[31, 40]]);
+    });
+
+    it("leaves no shared frame when playback hands over to a hop", () => {
+      const tag = createTag(CONFIG('recordingMode="true"'));
+      const [labelA, labelB] = tag.tiedChildren;
+
+      labelA.onLabelInteract();
+      video.play();
+      video.seekTo(12);
+      video.pause();
+
+      labelB.onLabelInteract();
+      tag.handleHop({ from: 12, to: 22 });
+
+      const [endOfA] = coverageOf(tag, "A").map(([, end]) => end);
+      const [startOfB] = coverageOf(tag, "B").map(([start]) => start);
+
+      expect(startOfB).toBeGreaterThan(endOfA);
+    });
+
+    it("still starts from the playhead when no recording is armed", () => {
+      const tag = createTag(CONFIG('recordingMode="true"'));
+      const [labelA] = tag.tiedChildren;
+
+      labelA.onLabelInteract();
+      tag.handleHop({ from: 1, to: 10 });
+      // clicking the same label stops the recording but leaves the regions alone
+      labelA.onLabelInteract();
+      labelA.setSelected(true);
+
+      tag.handleHop({ from: 50, to: 60 });
+
+      expect(coverageOf(tag, "A")).toEqual([
+        [1, 10],
+        [50, 60],
+      ]);
+    });
+  });
+  describe("selecting a region does not arm its label", () => {
+    it("leaves the labels alone when a region is selected", () => {
+      const tag = createTag(CONFIG('recordingMode="true"'));
+      const [labelA] = tag.tiedChildren;
+
+      // what the store does when the annotator clicks a region carrying label A
+      tag.updateFromResult([labelA.value]);
+
+      expect(tag.selectedLabels).toHaveLength(0);
+    });
+
+    it("puts down a running recording instead of handing it the region's label", () => {
+      const tag = createTag(CONFIG('recordingMode="true"'));
+      const [labelA, labelB] = tag.tiedChildren;
+
+      labelA.onLabelInteract();
+      video.play();
+      video.seekTo(5);
+      expect(tag.isRecording).toBe(true);
+
+      tag.updateFromResult([labelB.value]);
+
+      expect(tag.isRecording).toBe(false);
+      expect(tag.selectedLabels).toHaveLength(0);
+    });
+
+    it("does not pick up labelling where it left off once the video plays on", () => {
+      const tag = createTag(CONFIG('recordingMode="true"'));
+      const [labelA] = tag.tiedChildren;
+
+      labelA.onLabelInteract();
+      video.play();
+      video.seekTo(5);
+
+      tag.updateFromResult([labelA.value]);
+      const regionsSoFar = createdRegions.length;
+
+      video.seekTo(40);
+
+      expect(createdRegions).toHaveLength(regionsSoFar);
+      expect(createdRegions[0].ranges[0]).toEqual({ start: 1, end: 5 });
+    });
+
+    it("still adopts the region's label when recording mode is off", () => {
+      const tag = createTag(CONFIG());
+      const [labelA] = tag.tiedChildren;
+
+      tag.updateFromResult([labelA.value]);
+
+      expect(tag.selectedLabels.map((l) => l.value)).toEqual(["A"]);
+    });
   });
 });

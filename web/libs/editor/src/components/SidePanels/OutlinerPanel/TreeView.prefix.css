@@ -15,9 +15,17 @@
     box-sizing: border-box;
     transition: all 150ms ease-out;
 
-    &:hover,
-    &-selected {
+    &:hover {
       background-color: var(--selection-color, var(--color-neutral-emphasis-subtle));
+    }
+
+    /* Selection used to paint the same tint as hover, so a selected region was hard to pick out
+       of the list. A deeper wash of the label colour, plus a bar of it down the side, tells the
+       selected row apart at a glance — the bar also carries the state on pale labels. */
+    &-selected,
+    &-selected:hover {
+      background-color: var(--selection-color-strong, var(--color-primary-emphasis));
+      box-shadow: inset 3px 0 0 var(--icon-color, var(--color-primary-content));
     }
 
     &:hover .outliner-item__controls {
