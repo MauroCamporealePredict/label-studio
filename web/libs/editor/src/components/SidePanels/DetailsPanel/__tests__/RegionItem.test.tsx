@@ -87,6 +87,7 @@ describe("RegionItem", () => {
     spyOn(iconsModule, "IconEyeClosed").mockImplementation(() => <span data-testid="icon-eye-closed" />);
     spyOn(iconsModule, "IconEyeOpened").mockImplementation(() => <span data-testid="icon-eye-opened" />);
     spyOn(iconsModule, "IconPlus").mockImplementation(() => <span data-testid="icon-plus" />);
+    spyOn(iconsModule, "IconPencil").mockImplementation(() => <span data-testid="icon-pencil" />);
     spyOn(iconsModule, "IconRelationLink").mockImplementation(() => <span data-testid="icon-relation-link" />);
     spyOn(iconsModule, "IconTrash").mockImplementation(() => <span data-testid="icon-trash" />);
     spyOn(iconsModule, "IconWarning").mockImplementation(() => <span data-testid="icon-warning" />);
@@ -379,5 +380,36 @@ describe("RegionItem", () => {
     });
     render(<RegionItem region={region} />);
     expect(screen.getByTestId("detailed-region")).toBeInTheDocument();
+  });
+  describe("changing the label needs an unlock", () => {
+    it("offers no unlock where a label click already relabels the region", () => {
+      render(<RegionItem region={createMockRegion({ labelChangeLocked: false })} />);
+
+      expect(screen.queryByRole("button", { name: "Change label" })).toBeNull();
+    });
+
+    it("offers the unlock where label clicks are armed to record", () => {
+      render(<RegionItem region={createMockRegion({ labelChangeLocked: true, relabeling: false })} />);
+
+      expect(screen.getByRole("button", { name: "Change label" })).toBeInTheDocument();
+    });
+
+    it("unlocks the region when pressed", async () => {
+      const setRelabeling = mock();
+      render(<RegionItem region={createMockRegion({ labelChangeLocked: true, relabeling: false, setRelabeling })} />);
+
+      await userEvent.click(screen.getByRole("button", { name: "Change label" }));
+
+      expect(setRelabeling).toHaveBeenCalledWith(true);
+    });
+
+    it("cancels the change when pressed again", async () => {
+      const setRelabeling = mock();
+      render(<RegionItem region={createMockRegion({ labelChangeLocked: true, relabeling: true, setRelabeling })} />);
+
+      await userEvent.click(screen.getByRole("button", { name: "Cancel label change" }));
+
+      expect(setRelabeling).toHaveBeenCalledWith(false);
+    });
   });
 });

@@ -55,6 +55,8 @@ const SelectionMap = types
       },
       afterUnselect(region) {
         region.afterUnselectRegion?.();
+        // a region put down goes back to being locked, so an unlock can't outlive the visit
+        region.setRelabeling?.(false);
       },
       drawingSelect(region) {
         self.drawingSelected.put(region);

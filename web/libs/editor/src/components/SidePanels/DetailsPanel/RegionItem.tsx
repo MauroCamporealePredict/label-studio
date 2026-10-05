@@ -1,4 +1,12 @@
-import { IconEyeClosed, IconEyeOpened, IconPlus, IconRelationLink, IconTrash, IconWarning } from "@humansignal/icons";
+import {
+  IconEyeClosed,
+  IconEyeOpened,
+  IconPencil,
+  IconPlus,
+  IconRelationLink,
+  IconTrash,
+  IconWarning,
+} from "@humansignal/icons";
 import { Button, type ButtonProps } from "@humansignal/ui";
 import chroma from "chroma-js";
 import { observer } from "mobx-react";
@@ -141,6 +149,24 @@ const RegionAction: FC<any> = observer(({ region, annotation, editMode, onEditMo
       </RegionActionButton>
     </WithHotkey>,
   );
+
+  // where a stray label click could relabel the selection, changing the label takes an explicit
+  // unlock; pressing the button again cancels it
+  if (region.labelChangeLocked) {
+    entityButtons.push(
+      <RegionActionButton
+        key="relabel"
+        look={region.relabeling ? "filled" : "string"}
+        variant={region.relabeling ? "primary" : "neutral"}
+        onClick={() => region.setRelabeling(!region.relabeling)}
+        aria-label={region.relabeling ? "Cancel label change" : "Change label"}
+        aria-pressed={region.relabeling}
+        tooltip={region.relabeling ? "Pick a label to apply, or press again to cancel" : "Change label"}
+      >
+        <IconPencil />
+      </RegionActionButton>,
+    );
+  }
 
   return (
     <div className={cn("region-actions").toClassName()}>

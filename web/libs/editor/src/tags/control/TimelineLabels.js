@@ -98,11 +98,21 @@ const TimelineLabelsModel = Composition.volatile(() => ({
       if (!self.recordingmode) return false;
       if (self.annotation.isReadOnly()) return false;
 
-      // while nothing is being recorded let the default behavior handle labeling of selected regions
-      if (!self.isRecording) {
-        const hasSelectedRegions = self.annotation.selectedRegions.some((r) => r.parent?.name === self.toname);
+      // A label click only relabels a selected region once it has been unlocked from the Info
+      // panel. Without that it means "record with this label", like any other time: a stray click
+      // must not quietly change whatever happens to be selected.
+      const unlocked = self.annotation.selectedRegions.filter(
+        (region) => region.parent?.name === self.toname && region.relabeling,
+      );
 
-        if (hasSelectedRegions) return false;
+      if (unlocked.length) {
+        self.stopRecording();
+        // the stock path applies the label to the selected regions
+        label.toggleSelected();
+        // a label left selected here would be armed to record, which is what we are avoiding
+        self.unselectAll();
+        unlocked.forEach((region) => region.setRelabeling(false));
+        return true;
       }
 
       const wasRecordingThisLabel = self.isRecording && self.recordingLabel === label;

@@ -100,3 +100,24 @@ describe("Annotation#deleteRegion()", () => {
     expect(selectedLabels(control)).toEqual(["B"]);
   });
 });
+
+describe("unlocking a region for a label change", () => {
+  it("locks the region again once it is deselected", async () => {
+    const { annotation, region } = setup();
+
+    annotation.toggleRegionSelection(region, true);
+    await flushSelectionDebounce();
+    region.setRelabeling(true);
+
+    annotation.unselectAreas();
+
+    expect(region.relabeling).toBe(false);
+  });
+
+  it("does not ask for an unlock where label clicks are not armed to record", () => {
+    const { region } = setup();
+
+    // plain Labels: a label click relabels the selection the way it always has
+    expect(region.labelChangeLocked).toBe(false);
+  });
+});

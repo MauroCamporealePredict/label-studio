@@ -29,6 +29,16 @@ export const AreaMixinBase = types
     },
 
     /**
+     * Does changing this region's label need unlocking first?
+     * True for controls in recording mode, where clicking a label means "record with it" and a
+     * stray click would quietly relabel whatever happens to be selected.
+     * @see TimelineLabels#handleLabelInteract()
+     */
+    get labelChangeLocked() {
+      return self.labeling?.from_name?.recordingmode === true;
+    },
+
+    /**
      * @return {Result?} first result with labels (usually it's the only one, but not always)
      */
     get labeling() {
@@ -163,7 +173,15 @@ export const AreaMixinBase = types
       return self.annotation?.regionStore.regionIndexMap[self.id] || null;
     },
   }))
+  .volatile(() => ({
+    /** the annotator unlocked this region for a label change; see `labelChangeLocked` */
+    relabeling: false,
+  }))
   .actions((self) => ({
+    setRelabeling(value) {
+      self.relabeling = value;
+    },
+
     beforeDestroy() {
       self.results.forEach((r) => destroy(r));
 

@@ -35,6 +35,7 @@ const FakeRegion = types
     type: "timelineregion",
     parent: null,
     remover: null,
+    relabeling: false,
   }))
   .views((self) => ({
     get ranges() {
@@ -52,6 +53,9 @@ const FakeRegion = types
     },
     deleteRegion() {
       self.remover(self);
+    },
+    setRelabeling(value) {
+      self.relabeling = value;
     },
   }));
 
@@ -628,6 +632,78 @@ describe("TimelineLabels hop labelling", () => {
       tag.updateFromResult([labelA.value]);
 
       expect(tag.selectedLabels.map((l) => l.value)).toEqual(["A"]);
+    });
+  });
+  describe("changing a region's label needs unlocking", () => {
+    /** a region of label A, selected the way the Regions panel selects it */
+    const selectedRegion = (tag) => {
+      const [labelA] = tag.tiedChildren;
+
+      labelA.onLabelInteract();
+      tag.handleHop({ from: 1, to: 10 });
+      labelA.onLabelInteract();
+
+      const [region] = tag.labelRegions(labelA);
+
+      mockAnnotation.selectedRegions = [region];
+      return region;
+    };
+
+    it("does not relabel a selected region that is still locked", () => {
+      const tag = createTag(CONFIG('recordingMode="true"'));
+      const region = selectedRegion(tag);
+      const labelB = tag.tiedChildren[1];
+      const toggle = spyOn(labelB, "toggleSelected");
+
+      labelB.onLabelInteract();
+
+      expect(toggle).not.toHaveBeenCalled();
+      expect(region.labels).toEqual(["A"]);
+      // the click means what it always means in recording mode
+      expect(tag.isRecording).toBe(true);
+      expect(tag.recordingLabel).toBe(labelB);
+    });
+
+    it("relabels through the stock path once the region is unlocked", () => {
+      const tag = createTag(CONFIG('recordingMode="true"'));
+      const region = selectedRegion(tag);
+      const labelB = tag.tiedChildren[1];
+      const toggle = spyOn(labelB, "toggleSelected").mockImplementation(() => {});
+
+      region.setRelabeling(true);
+      labelB.onLabelInteract();
+
+      expect(toggle).toHaveBeenCalledTimes(1);
+      expect(tag.isRecording).toBe(false);
+    });
+
+    it("locks the region again after one change and leaves no label armed", () => {
+      const tag = createTag(CONFIG('recordingMode="true"'));
+      const region = selectedRegion(tag);
+      const labelB = tag.tiedChildren[1];
+
+      spyOn(labelB, "toggleSelected").mockImplementation(() => labelB.setSelected(true));
+
+      region.setRelabeling(true);
+      labelB.onLabelInteract();
+
+      expect(region.relabeling).toBe(false);
+      expect(tag.selectedLabels).toHaveLength(0);
+    });
+
+    it("stops a running recording before changing the label", () => {
+      const tag = createTag(CONFIG('recordingMode="true"'));
+      const region = selectedRegion(tag);
+      const [labelA, labelB] = tag.tiedChildren;
+
+      spyOn(labelB, "toggleSelected").mockImplementation(() => {});
+      labelA.onLabelInteract();
+      expect(tag.isRecording).toBe(true);
+
+      region.setRelabeling(true);
+      labelB.onLabelInteract();
+
+      expect(tag.isRecording).toBe(false);
     });
   });
 });
